@@ -1,5 +1,4 @@
 import os
-from networkx import config
 import numpy as np
 import warnings
 warnings.filterwarnings('ignore')
@@ -14,6 +13,9 @@ from sklearn.metrics import accuracy_score, confusion_matrix, classification_rep
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.metrics import roc_curve, auc
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+
 
 
 import matplotlib.pyplot as plt
@@ -33,8 +35,8 @@ from torch.utils.data import TensorDataset, DataLoader
 class Config:
     DATASET_PATH = r"C:\Users\91638\Desktop\BCI\DATA"
 
-    SUBJECT_ID = 9
-    SESSION_ID = 1
+    SUBJECT_ID = 7
+    SESSION_ID = 3
     DATASET_TYPE = '2b'
 
     MOTOR_CORTEX_CHANNELS = ['C3', 'Cz', 'C4']
@@ -251,28 +253,28 @@ def train_eegnet_and_extract_features(X_train, y_train, X_val, X_test):
 
 def main():
     
-    config = Config()
+    cfg = Config()
 
     # ===================== STAGE 1: LOAD & PREPROCESS =====================
     print("\nLoading and preprocessing data...")
-    epochs, labels = load_bci_competition_data(config)
+    epochs, labels = load_bci_competition_data(cfg)
     sfreq = epochs.info['sfreq']
-    data = preprocess_data(epochs, config)
+    data = preprocess_data(epochs, cfg)
 
     # ===================== DATA SPLITTING =====================
     X_temp, X_test, y_temp, y_test = train_test_split(
         data, labels,
-        test_size=config.TEST_SIZE,
-        random_state=config.RANDOM_STATE,
+        test_size=cfg.TEST_SIZE,
+        random_state=cfg.RANDOM_STATE,
         stratify=labels
     )
 
-    val_ratio = config.VAL_SIZE / (1 - config.TEST_SIZE)
+    val_ratio = cfg.VAL_SIZE / (1 - cfg.TEST_SIZE)
 
     X_train, X_val, y_train, y_val = train_test_split(
         X_temp, y_temp,
         test_size=val_ratio,
-        random_state=config.RANDOM_STATE,
+        random_state=cfg.RANDOM_STATE,
         stratify=y_temp
     )
 
@@ -285,15 +287,15 @@ def main():
     print("\nExtracting FBCSP features...")
 
     X_train_fbcsp, csp_filters = extract_fbcsp_features(
-        X_train, y_train, config, sfreq, True
+        X_train, y_train, cfg, sfreq, True
     )
 
     X_val_fbcsp = extract_fbcsp_features(
-        X_val, y_val, config, sfreq, False, csp_filters.copy()
+        X_val, y_val, cfg, sfreq, False, csp_filters.copy()
     )
 
     X_test_fbcsp = extract_fbcsp_features(
-        X_test, y_test, config, sfreq, False, csp_filters.copy()
+        X_test, y_test, cfg, sfreq, False, csp_filters.copy()
     )
 
     # ===================== STAGE 4: EEGNET =====================
@@ -315,7 +317,7 @@ def main():
     print(" Hybrid Test  :", X_test_hybrid.shape)
 
     # ===================== FEATURE SELECTION =====================
-    selector = SelectKBest(mutual_info_classif, k=config.N_SELECTED_FEATURES)
+    selector = SelectKBest(mutual_info_classif, k=cfg.N_SELECTED_FEATURES)
 
     X_train_sel = selector.fit_transform(X_train_hybrid, y_train)
     X_val_sel   = selector.transform(X_val_hybrid)
@@ -323,15 +325,31 @@ def main():
 
     print("\nSelected Feature Shape:", X_train_sel.shape)
 
-    # ===================== CLASSIFIER TRAINING =====================
-    print("\nTraining MLP Classifier...")
+    # ===================== CLASSIFIER TRAINING (IMPROVED MLP) =====================
+    print("\nTraining Improved MLP Classifier (Regularized + Scaled)...")
 
-    clf = MLPClassifier(
-        hidden_layer_sizes=config.MLP_HIDDEN_LAYERS,
-        max_iter=config.MLP_MAX_ITER,
-        random_state=config.RANDOM_STATE,
-        verbose=config.VERBOSE
-    )
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    clf = Pipeline([
+        ("scaler", StandardScaler()),
+        ("mlp", MLPClassifier(
+            hidden_layer_sizes=(64, 32),
+            activation='relu',
+            solver='adam',
+            alpha=0.001,                 # L2 regularization
+            batch_size=16,
+            learning_rate='adaptive',
+            learning_rate_init=0.001,
+            max_iter=800,
+            shuffle=True,
+            early_stopping=True,
+            validation_fraction=0.15,
+            n_iter_no_change=20,
+            random_state=cfg.RANDOM_STATE,
+            verbose=True
+        ))
+    ])
 
     clf.fit(X_train_sel, y_train)
 
@@ -357,7 +375,7 @@ def main():
     print("CROSS-VALIDATION PERFORMANCE")
     print("="*70)
 
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=cfg.RANDOM_STATE)
 
     cv_scores = cross_val_score(
         clf,
@@ -394,6 +412,11 @@ def main():
     print(f"Test Recall   : {rec*100:.2f} %")
     print(f"Test F1-Score : {f1*100:.2f} %")
 
+    # ===================== ROC CURVE =====================
+    y_prob = clf.predict_proba(X_test_sel)[:, 1]
+    fpr, tpr, _ = roc_curve(y_test, y_prob)
+    roc_auc = auc(fpr, tpr)
+
     # ===================== FINAL SCIENTIFIC REPORT =====================
     print("\n" + "="*80)
     print("FINAL MODEL VALIDATION REPORT")
@@ -412,17 +435,17 @@ def main():
 
     # ===================== VISUALIZATION =====================
 
-    plt.figure(figsize=(14,4))
+    plt.figure(figsize=(18,4))
 
     # ---- Confusion Matrix ----
-    plt.subplot(1,3,1)
+    plt.subplot(1,4,1)
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                 xticklabels=["Left","Right"],
                 yticklabels=["Left","Right"])
     plt.title("Confusion Matrix")
 
     # ---- Validation vs Test Accuracy ----
-    plt.subplot(1,3,2)
+    plt.subplot(1,4,2)
     scores = [val_acc*100, acc*100]
     labels_plot = ["Validation", "Test"]
     plt.bar(labels_plot, scores)
@@ -433,13 +456,22 @@ def main():
     for i, v in enumerate(scores):
         plt.text(i, v+1, f"{v:.2f}%", ha='center', fontsize=11)
 
-    # ---- Cross-Validation Distribution ----
-    plt.subplot(1,3,3)
+    # ---- Cross-Validation Stability ----
+    plt.subplot(1,4,3)
     plt.boxplot(cv_scores*100)
     plt.ylabel("Accuracy (%)")
     plt.title("Cross-Validation Stability")
 
-    plt.suptitle("Hybrid FBCSP + EEGNet Model Validation", fontsize=14)
+    # ---- ROC Curve ----
+    plt.subplot(1,4,4)
+    plt.plot(fpr, tpr, label=f"AUC = {roc_auc:.2f}")
+    plt.plot([0,1],[0,1],'k--')
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve")
+    plt.legend()
+
+    plt.suptitle("Hybrid FBCSP + EEGNet + Improved MLP Validation", fontsize=14)
     plt.tight_layout()
     plt.show()
 
