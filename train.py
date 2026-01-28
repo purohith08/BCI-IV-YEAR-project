@@ -46,7 +46,7 @@ from tensorflow.keras.optimizers import Adam
 class Config:
     DATASET_PATH = r"C:\Users\91638\Desktop\BCI\DATA"
 
-    SUBJECT_ID = 1
+    SUBJECT_ID = 5
     SESSION_ID = 1
 
     MOTOR_CORTEX_CHANNELS = ['C3', 'Cz', 'C4']
