@@ -1,0 +1,13 @@
+# Motor Imagery EEG System — Requirements
+# =========================================
+# Install with:  pip install -r requirements.txt
+
+pygame>=2.5.0
+numpy>=1.24.0
+
+# Optional — enables GIF loading:
+# pillow>=10.0.0
+
+# Optional — for real EEG hardware:
+# brainflow>=5.10.0       # BrainFlow universal EEG SDK
+# pyserial>=3.5           # For serial-port EEG devices

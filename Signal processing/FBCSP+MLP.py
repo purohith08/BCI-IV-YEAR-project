@@ -26,8 +26,8 @@ class Config:
 
     DATASET_PATH = r"C:\Users\91638\Desktop\BCI\DATA"
 
-    SUBJECT_ID = 1
-    SESSION_ID = 2
+    SUBJECT_ID = 7
+    SESSION_ID = 3
     DATASET_TYPE = '2b'
 
     MOTOR_CORTEX_CHANNELS = ['C3', 'Cz', 'C4']
@@ -196,7 +196,7 @@ def extract_fbcsp_features(data, labels, config, sfreq, is_training=True, csp_fi
         # CSP transform
         csp_feat = csp.transform(band_data)   # shape = (epochs, components)
 
-        # IMPORTANT: CSP already gives variance features → just take log
+        # IMPORTANT: CSP already gives variance features -> just take log
         log_var = np.log(np.abs(csp_feat))
 
         # Ensure correct 2D shape

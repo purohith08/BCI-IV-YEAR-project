@@ -46,8 +46,8 @@ from tensorflow.keras.optimizers import Adam
 class Config:
     DATASET_PATH = r"C:\Users\91638\Desktop\BCI\DATA"
 
-    SUBJECT_ID = 5
-    SESSION_ID = 1
+    SUBJECT_ID = 7
+    SESSION_ID = 3
 
     MOTOR_CORTEX_CHANNELS = ['C3', 'Cz', 'C4']
 
@@ -350,7 +350,7 @@ def main():
     mlp = Pipeline([
         ('scaler', StandardScaler()),
         ('mlp', MLPClassifier(
-            hidden_layer_sizes=(64, 32),
+            hidden_layer_sizes=(128, 64),
             activation='relu',
             solver='adam',
             max_iter=800,
